@@ -1,0 +1,56 @@
+Configuration	pdmtest
+STM32CubeMX 	4.27.0
+Date	10/11/2018
+MCU	STM32L432KCUx
+
+
+
+PERIPHERALS	MODES	FUNCTIONS	PINS
+DAC1	Connected to external pin only	DAC1_OUT1	PA4
+RCC	Crystal/Ceramic Resonator	RCC_OSC32_IN	PC14-OSC32_IN (PC14)
+RCC	Crystal/Ceramic Resonator	RCC_OSC32_OUT	PC15-OSC32_OUT (PC15)
+SYS	Serial Wire	SYS_JTCK-SWCLK	PA14 (JTCK-SWCLK)
+SYS	Serial Wire	SYS_JTMS-SWDIO	PA13 (JTMS-SWDIO)
+SYS	SysTick	SYS_VS_Systick	VP_SYS_VS_Systick
+USART2	Asynchronous	USART2_RX	PA15 (JTDI)
+USART2	Asynchronous	USART2_TX	PA2
+
+
+
+Pin Nb	PINs	FUNCTIONs	LABELs
+2	PC14-OSC32_IN (PC14)	RCC_OSC32_IN	
+3	PC15-OSC32_OUT (PC15)	RCC_OSC32_OUT	
+8	PA2	USART2_TX	VCP_TX
+10	PA4	DAC1_OUT1	
+12	PA6	GPIO_EXTI6	BTN
+13	PA7	GPIO_Output	AMP_EN
+23	PA13 (JTMS-SWDIO)	SYS_JTMS-SWDIO	SWDIO
+24	PA14 (JTCK-SWCLK)	SYS_JTCK-SWCLK	SWCLK
+25	PA15 (JTDI)	USART2_RX	VCP_RX
+
+
+
+SOFTWARE PROJECT
+
+Project Settings : 
+Project Name : pdmtest
+Project Folder : /home/sungjune/Projects/pdmtest
+Toolchain / IDE : Makefile
+Firmware Package Name and Version : STM32Cube FW_L4 V1.13.0
+
+
+Code Generation Settings : 
+STM32Cube Firmware Library Package : Copy only the necessary library files
+Generate peripheral initialization as a pair of '.c/.h' files per peripheral : No
+Backup previously generated files when re-generating : No
+Delete previously generated files when not re-generated : Yes
+Set all free pins as analog (to optimize the power consumption) : No
+
+
+Toolchains Settings : 
+Compiler Optimizations : 
+
+
+
+
+
