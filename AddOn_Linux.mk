@@ -5,7 +5,7 @@ export PATH:=/opt/gcc-arm-none-eabi-7-2017-q4-major/bin:$(PATH)
 # additional source files
 C_SOURCES += \
 			 board.c \
-			 PdmUtils.c
+			 PDMUtils.c
 
 # additional header folder
 C_INCLUDES += \

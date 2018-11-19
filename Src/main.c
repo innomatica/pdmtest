@@ -42,6 +42,7 @@
 
 /* USER CODE BEGIN Includes */
 #include "board.h"
+#include "PDMUtils.h"
 #include "pdm2pcm_glo.h"
 /* USER CODE END Includes */
 
@@ -56,13 +57,10 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 #define BTN_DEB_DELAY			(300)
-#define WAV_HEADER_SIZE			(44)
-#define WAV_DATA_OFFSET			(44)
-#define U8BUF1_SIZE_H			(1024)
-#define U8BUF1_SIZE_F			(U8BUF1_SIZE_H<<1)
 #define DECIMATION				(64)
-#define U8BUF2_SIZE_H			(U8BUF1_SIZE_H/DECIMATION)
-#define U8BUF2_SIZE_F			(U8BUF2_SIZE_H<<1)
+
+#define I16BUFF_SIZE				(128)
+#define U16BUFF_SIZE				(128)
 
 // interrupt flags
 bool btn_int_flag = false;
@@ -73,8 +71,18 @@ bool dac_fcc_flag = false;
 unsigned btn_debounce = 0;
 
 // general buffer
-uint8_t u8buf1[U8BUF1_SIZE_F];
-uint8_t u8buf2[U8BUF2_SIZE_F];
+int16_t i16buff[I16BUFF_SIZE] = {0};
+uint16_t u16buff[U16BUFF_SIZE] = {0};
+
+// audio state
+typedef enum
+{
+	ASTATE_IDLE = 0,
+	ASTATE_PCM_SINE,
+	ASTATE_PDM_SINE,
+} audio_state;
+
+audio_state AState = ASTATE_IDLE;
 
 static PDM_Filter_Handler_t PDM_FilterHandler[1];
 static PDM_Filter_Config_t PDM_FilterConfig[1];
@@ -410,14 +418,128 @@ void System_Init(void)
 void Event_Handler(void)
 {
 	static bool dac_run = 0;
+	unsigned u16val;
 	UNUSED(dac_run);
 
 	if(btn_int_flag)
 	{
 		btn_int_flag = false;
 		btn_debounce = BTN_DEB_DELAY;
-		DbgPrintf("\r\nButton pressed");
+		//DbgPrintf("\r\nButton pressed");
+
+		switch(AState)
+		{
+			case ASTATE_IDLE:
+				// get PCM sinewave data
+				u16val = I16BUFF_SIZE;
+				// PCM sine wave: mag = 30000, freq = 1000, srate = 16000
+				GeneratePcmSine(30000, 1000, 16000, i16buff, &u16val);
+
+				if(u16val)
+				{
+					DbgPrintf("\r\nPCM Sine(30000,1000,16000)\r\n");
+					for(int i = 0; i < u16val; i++)
+					{
+						DbgPrintf("[%02d] %05d\r\n", i, i16buff[i]);
+					}
+				}
+				// clear dac int flags
+				dac_hcc_flag = false;
+				dac_fcc_flag = false;
+				// convert I16 to U16
+				for(int i = 0; i < u16val; i++)
+				{
+					i16buff[i] = i16buff[i] ^ 0x8000;
+				}
+
+				// enable DAC DMA mode
+				HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)i16buff,
+						u16val, DAC_ALIGN_12B_L);
+
+				// start DAC by starting TIM6 trigger
+				HAL_TIM_Base_Start(&htim6);
+				DbgPrintf("\r\n>>Playing PCM sine wave");
+				// proceed to next state
+				AState = ASTATE_PCM_SINE;
+
+				break;
+
+			case ASTATE_PCM_SINE:
+				// stop TIM6
+				HAL_TIM_Base_Stop(&htim6);
+				// stop DAC
+				HAL_DAC_Stop_DMA(&hdac1, DAC_CHANNEL_1);
+				DbgPrintf("\r\n<<Stop playing PCM sine wave\r\n");
+
+				// PDM sine wave: freq = 1000, srate = 16000 * 64 (oversample)
+				u16val = U16BUFF_SIZE;
+				GeneratePdmSine(1000, 16000 * 64, u16buff, &u16val);
+
+				if(u16val)
+				{
+					DbgPrintf("\r\nPDM Sine(1000,16000 * 64)\r\n");
+					for(int i = 0; i < u16val; i++)
+					{
+						DbgPrintf("[%02d] 0x%04x\r\n", i, u16buff[i]);
+					}
+				}
+				// apply 16 decimation CIC filter
+				FilterCIC(u16buff, u16val, 16, i16buff); 
+				// print result
+				DbgPrintf("\r\nCIC filter applied\r\n");
+				// number of data will be the same
+				// this will be 1/4 of the original frequency
+				for(int i = 0; i < u16val; i++)
+				{
+					DbgPrintf("[%02d] %d\r\n", i, i16buff[i]);
+				}
+
+				// TODO: apply halfband filter (2 decim) twice
+
+				// convert I16 to U16
+				for(int i = 0; i < (u16val>>2); i++)
+				{
+					i16buff[i] = i16buff[i] ^ 0x8000;
+				}
+				// start DAC
+				// enable DAC DMA mode
+				HAL_DAC_Start_DMA(&hdac1, DAC_CHANNEL_1, (uint32_t*)i16buff,
+						u16val, DAC_ALIGN_12B_L);
+				// start DAC by starting TIM6 trigger
+				HAL_TIM_Base_Start(&htim6);
+				DbgPrintf("\r\n>>Start playing PDM sine wave");
+				// proceed to next state
+				AState = ASTATE_PDM_SINE;
+
+				break;
+
+			case ASTATE_PDM_SINE:
+				// stop TIM6
+				HAL_TIM_Base_Stop(&htim6);
+				// stop DAC
+				HAL_DAC_Stop_DMA(&hdac1, DAC_CHANNEL_1);
+				DbgPrintf("\r\n<<Stop playing PDM sine wave...");
+				// back to idle state
+				AState = ASTATE_IDLE;
+				DbgPrintf("Back to idle state");
+				
+				break;
+
+			default:
+				break;
+		}
 	}
+	else if(dac_hcc_flag)
+	{
+		dac_hcc_flag = false;
+		// do nothing here
+	}
+	else if(dac_fcc_flag)
+	{
+		dac_fcc_flag = false;
+		// do nothing here
+	}
+
 }
 
 void PDMDecoder_Init(void)
